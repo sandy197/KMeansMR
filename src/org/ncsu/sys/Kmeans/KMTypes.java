@@ -39,6 +39,12 @@ public class KMTypes {
 		private int count;
 		private int centroidIdx;
 		
+		public Value(){
+//			this.dimension = 0;
+//			this.count = 0;
+//			this.centroidIdx = 1;
+		}
+		
 		public Value(int dimension){
 			this.dimension = dimension; 
 			this.coordinates = new int[dimension];
@@ -85,6 +91,7 @@ public class KMTypes {
 				in.readInt();
 			}
 			count = in.readInt();
+			centroidIdx = in.readInt();
 		}
 		@Override
 		public void write(DataOutput out) throws IOException {
@@ -95,6 +102,7 @@ public class KMTypes {
 				}
 			}
 			out.writeInt(count);
+			out.writeInt(centroidIdx);
 		}
 		@Override
 		public int compareTo(Object o) {
@@ -134,13 +142,10 @@ public class KMTypes {
 		private int TaskIndex;
 		private VectorType type;
 		
-		//This is assigned by the map task
-		private int centroidIdx;
 
 		public Key(int TaskIndex, VectorType type) {
 			this.TaskIndex = TaskIndex;
 			this.type = type;
-		//	this.centroidIdx = -1;
 		}
 
 		public VectorType getType() {

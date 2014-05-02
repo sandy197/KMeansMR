@@ -12,6 +12,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.SequenceFile;
+import org.apache.hadoop.io.SequenceFile.Reader;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.compress.DefaultCodec;
 import org.apache.hadoop.mapreduce.Reducer;
@@ -46,7 +47,7 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 	public void reduce(Key _key, Iterable<Value> values, Context context)
 			throws IOException, InterruptedException {
 		//populate clusters and data
-		Value[] partialCentroids;
+		Value[] partialCentroids = null;
 		
 		if(_key.getType() == VectorType.CENTROID){
 			buildCentroids(values, centroids);
@@ -105,10 +106,10 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 				
 				//add partial centers of other tasks to the hashmap
 				for(int i = 1; i < R1; i++){
-					//TODO:configureWithClusterInfo for reading a file
+					//configureWithClusterInfo for reading a file
 					path = new Path(conf.get("KM.tempClusterDir") + "/" + R1);
 					Path filePath = fs.makeQualified(path);
-					Value[] partCentroidsFromFile = getCentroidsFromFile(filePath);
+					List<Value> partCentroidsFromFile = getCentroidsFromFile(filePath);
 					for(Value partialCentroid : partCentroidsFromFile){
 						if(auxCentroids.containsKey(partialCentroid.getCentroidIdx())){
 							//TODO: clarify changes to count and consider corner cases
@@ -125,10 +126,59 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 					//TODO: compute new clusters
 					Value newCentroid = computeNewCentroid(auxCentroids.get(key));
 					//TODO:write it back as a standard reducer output !
-					context.write(new Key(R1, VectorType.CENTROID), newCentroid);
+					if(newCentroid != null)
+						context.write(new Key(R1, VectorType.CENTROID), newCentroid);
 				}
 			}
 		}
+	}
+
+	private Value computeNewCentroid(Value value) {
+		if(value.getCount() == 0)
+			return null;
+		else {
+			Value newCentroid = new Value(value.getDimension());
+			int[] coords = value.getCoordinates();
+			int[] newCoords = newCentroid.getCoordinates();
+			for(int i = 0; i < coords.length; i++){
+				newCoords[i] = coords[i]/value.getCount();
+			}
+			return newCentroid;
+		}
+			
+	}
+
+	private List<Value> getCentroidsFromFile(Path filePath) {
+		List<Value> partialCentroids = new ArrayList<Value>();
+		Configuration conf = new Configuration();
+		Reader reader = null;
+		try {
+			FileSystem fs = filePath.getFileSystem(conf);
+			reader = new SequenceFile.Reader(fs, filePath, conf);
+			Class<?> valueClass = reader.getValueClass();
+			IntWritable key;
+			try {
+				key = reader.getKeyClass().asSubclass(IntWritable.class).newInstance();
+			} catch (InstantiationException e) { // Should not be possible
+				throw new IllegalStateException(e);
+			} catch (IllegalAccessException e) {
+					throw new IllegalStateException(e);
+			}
+			Value value = new Value();
+			while (reader.next(key, value)) {
+				partialCentroids.add(value);
+				value = new Value();
+			}
+        } catch (IOException e) {
+			e.printStackTrace();
+		} finally {
+        	try{
+        		reader.close();
+        	} catch (IOException e) {
+        		e.printStackTrace();
+        	}
+        }
+		return partialCentroids;
 	}
 
 	private Value[] classify(List<Value> vectors2, List<Value> centroids2) throws Exception {

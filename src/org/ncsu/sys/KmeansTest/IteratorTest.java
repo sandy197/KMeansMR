@@ -17,10 +17,9 @@ public class IteratorTest {
 	}
 	
 	public static void main(String[] args){
-		List<Value> vals1 = new ArrayList<Value>();
-		Value[] vals2 = new Value[10];
-		for(int i =0 ; i < 10 ; i++){
-			vals2[i].setDimension(i);
+		int[] intarray = new int[10];
+		for(int i =0; i< 10; i++){
+			System.out.println(intarray[i]);
 		}
 	}
 }

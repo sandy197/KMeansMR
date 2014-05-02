@@ -15,14 +15,6 @@ import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
-import org.ncsu.sys.SpMMMR.SpMMDriver;
-import org.ncsu.sys.SpMMMR.SpMMMapper;
-import org.ncsu.sys.SpMMMR.SpMMPartitioner2;
-import org.ncsu.sys.SpMMMR.SpMMPatitioner;
-import org.ncsu.sys.SpMMMR.SpMMReducer;
-import org.ncsu.sys.SpMMMR.SpMMTypes.IndexPair;
-import org.ncsu.sys.SpMMMR.SpMMTypes.Key;
-import org.ncsu.sys.SpMMMR.SpMMTypes.Value;
 
 public class KMDriver {
 	
@@ -88,7 +80,7 @@ public class KMDriver {
 	    conf.set("KM.tempClusterDir", tempClusterDirPath);
 //	    conf.setInt("SpMM.strategy", strategy);
 	    conf.setInt("KM.R1", mapTaskCount);
-	    conf.setInt("KM.R2", mapTaskCount);
+//	    conf.setInt("KM.R2", mapTaskCount);
 //	    conf.setInt("SpMM.I", aRows);
 //	    conf.setInt("SpMM.K", aColsbRows);
 //	    conf.setInt("SpMM.J", bCols);
@@ -104,30 +96,24 @@ public class KMDriver {
 		Job job = Job.getInstance(conf, "kmeans");
 		job.setJarByClass(org.ncsu.sys.Kmeans.KMDriver.class);
 		
-		job.setNumReduceTasks(conf.getInt("SpMM.R1", 6));
+		job.setNumReduceTasks(conf.getInt("KM.R1", 6));
 	    System.out.println("Number of reduce tasks for job1 set to: "+ conf.getInt("SpMM.R1", 0));
 	    job.setInputFormatClass(SequenceFileInputFormat.class);
 	    job.setOutputFormatClass(SequenceFileOutputFormat.class);
  		job.setMapperClass(KMMapper.class);
  		job.setReducerClass(KMReducer.class);
-//	    job.setPartitionerClass(KMPatitioner.class);
-	    job.setMapOutputKeyClass(Key.class);
-	    job.setMapOutputValueClass(Value.class);
-	    job.setOutputKeyClass(IndexPair.class);
-	    job.setOutputValueClass(IntWritable.class);
+	    job.setPartitionerClass(KMPartitioner.class);
+	    job.setMapOutputKeyClass(org.ncsu.sys.Kmeans.KMTypes.Key.class);
+	    job.setMapOutputValueClass(org.ncsu.sys.Kmeans.KMTypes.Value.class);
+	    job.setOutputKeyClass(org.ncsu.sys.Kmeans.KMTypes.Key.class);
+	    job.setOutputValueClass(org.ncsu.sys.Kmeans.KMTypes.Value.class);
+	    
 	    FileInputFormat.addInputPath(job, new Path(conf.get("SpMM.inputPathA")));
 	    FileInputFormat.addInputPath(job, new Path(conf.get("SpMM.inputPathB")));
-	    FileOutputFormat.setOutputPath(job, (new Path(conf.get("SpMM.tempDirPath") + k)));
-		
-
-		// TODO: specify output types
-		job.setOutputKeyClass(Text.class);
-		job.setOutputValueClass(Text.class);
-
-		// TODO: specify input and output DIRECTORIES (not files)
-		FileInputFormat.setInputPaths(job, new Path("src"));
-		FileOutputFormat.setOutputPath(job, new Path("out"));
-
+	    FileOutputFormat.setOutputPath(job, (new Path(conf.get("SpMM.tempDirPath"))));
+	    
+	    //TODO: fix all the paths and implement the algo as indicated in the site.
+	    
 		if (!job.waitForCompletion(true))
 			return;
 	}
