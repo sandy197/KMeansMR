@@ -2,8 +2,10 @@ package org.ncsu.sys.Kmeans;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Hashtable;
 import java.util.List;
 
+import org.apache.commons.collections.map.HashedMap;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.CreateFlag;
 import org.apache.hadoop.fs.FileSystem;
@@ -22,9 +24,10 @@ import org.ncsu.sys.Kmeans.SyncPrimitive.Barrier;
 
 public class KMReducer extends Reducer<Key, Value, Key, Value> {
 
+	private static final boolean DEBUG = true;
 	public static String ZK_ADDRESS = "10.1.255.13:2181";
 	private int dimension;
-	private List<int[]> centroids, vectors;
+	private List<Value> centroids, vectors;
 	private int R1;
 	boolean isCbuilt, isVbuilt;
 	
@@ -36,7 +39,7 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 		Configuration conf = context.getConfiguration();
 		dimension = conf.getInt("KM.dimension", 2);
 		R1 = conf.getInt("KM.R1", 2);
-		centroids = new ArrayList<int[]>(R1);
+		centroids = new ArrayList<Value>(R1);
 		isCbuilt = isVbuilt = false;
 	}
 
@@ -57,7 +60,12 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 		}
 		//TODO : compute the partial clusters
 		if(isCbuilt && isVbuilt){
-			partialCentroids = classify(vectors, centroids);
+			try{
+				partialCentroids = classify(vectors, centroids);
+			}
+			catch(Exception ex){
+				ex.printStackTrace();
+			}
 			
 			//TODO: check the case where a cluster doesn't contain any points. Refer to the fix pointed out on the site.
 			Configuration conf = context.getConfiguration();
@@ -66,13 +74,16 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 			//TODO: write the partial centroids to files
 			Path path = new Path(conf.get("KM.tempClusterDir" + "/" + taskId));
 			SequenceFile.Writer writer = SequenceFile.createWriter(fs, conf, path,
-				      Value.class, Value.class,
+				      IntWritable.class, Value.class,
 				      SequenceFile.CompressionType.NONE);
 			for(int i = 0; i < partialCentroids.length ; i++){
-				writer.append(centroids.get(i), partialCentroids[i]);
+				Value centroid = (Value)centroids.get(i);
+				IntWritable el = new IntWritable();
+				el.set(partialCentroids[i].getCentroidIdx());
+				writer.append(el, partialCentroids[i]);
 			}
 			writer.close();
-			//TODO: sync
+			//sync
 			Barrier b = new Barrier(ZK_ADDRESS, "/b1", R1);
 			try{
 			    boolean flag = b.enter();
@@ -86,39 +97,68 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 			
 			//TODO: read files and compute newClusters only if its the task 0
 			if(taskId == 0){
-				for(int i = 0; i < R1; i++){
-					//TODO:configureWithClusterInfo for raeding a file
-					//TODO: compute new clusters by reading all the partial clusters pertaining to a particular centroid.
-						//can use hashmap here
+				//TODO : add partial centers of task 0 to the hashmap.
+				Hashtable<Integer, Value> auxCentroids = new Hashtable<Integer, Value>();
+				for(int i = 0; i < partialCentroids.length; i++){
+					auxCentroids.put(partialCentroids[i].getCentroidIdx(), partialCentroids[i]);
+				}
+				
+				//add partial centers of other tasks to the hashmap
+				for(int i = 1; i < R1; i++){
+					//TODO:configureWithClusterInfo for reading a file
+					path = new Path(conf.get("KM.tempClusterDir") + "/" + R1);
+					Path filePath = fs.makeQualified(path);
+					Value[] partCentroidsFromFile = getCentroidsFromFile(filePath);
+					for(Value partialCentroid : partCentroidsFromFile){
+						if(auxCentroids.containsKey(partialCentroid.getCentroidIdx())){
+							//TODO: clarify changes to count and consider corner cases
+							auxCentroids.get(partialCentroid.getCentroidIdx()).addVector(partialCentroid);
+						}
+						else{
+							auxCentroids.put(partialCentroid.getCentroidIdx(), partialCentroid);
+						}
+					}
+				}
+				
+				int centroidCount = auxCentroids.keySet().size();
+				for(Integer key : auxCentroids.keySet()){
+					//TODO: compute new clusters
+					Value newCentroid = computeNewCentroid(auxCentroids.get(key));
 					//TODO:write it back as a standard reducer output !
+					context.write(new Key(R1, VectorType.CENTROID), newCentroid);
 				}
 			}
 		}
 	}
 
-	private Value[] classify(List<int[]> vectors2, List<int[]> centroids2) {
+	private Value[] classify(List<Value> vectors2, List<Value> centroids2) throws Exception {
 		Value[] partialCentroids = new Value[centroids2.size()];
-		for(int[] point : vectors2){
+		for(Value point : vectors2){
 			int idx = getNearestCentroidIndex(point, centroids2);
 			if(partialCentroids[idx] == null){
-				partialCentroids[idx] = new Value(point.length);
+				partialCentroids[idx] = new Value(point.getDimension());
 			}
 			partialCentroids[idx].addVector(point);
+			if(partialCentroids[idx].getCentroidIdx() == -1){
+				partialCentroids[idx].setCentroidIdx(idx);
+			}
+			else {
+				if(partialCentroids[idx].getCentroidIdx() != idx)
+					if(DEBUG) throw new Exception("Fatal: Inconsistent cluster, multiple centroids problem!");
+			}
 		}
 		return partialCentroids;
 	}
 
-	private int getNearestCentroidIndex(int[] point, List<int[]> centroids2) {
-		int idx = 0;
+	private int getNearestCentroidIndex(Value point, List<Value> centroids2) {
 		int nearestCidx = -1;
 		int shortestDistance = Integer.MAX_VALUE;
-		for(int[] centroid : centroids2){
-			int distance = getDistance(point, centroid);
+		for(Value centroid : centroids2){
+			int distance = getDistance(point.getCoordinates(), centroid.getCoordinates());
 			if(distance < shortestDistance){
-				nearestCidx  = idx;
+				nearestCidx  = centroid.getCentroidIdx();
 				shortestDistance = distance;
 			}
-			idx++;
 		}
 		return nearestCidx;
 		
@@ -132,9 +172,9 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 		return distance;
 	}
 
-	private void buildCentroids(Iterable<Value> values, List<int[]> centroidsLoc) {
+	private void buildCentroids(Iterable<Value> values, List<Value> centroidsLoc) {
 		for(Value val : values){
-			centroidsLoc.add(val.getCoordinates());
+			centroidsLoc.add(val);
 		}
 		
 	}

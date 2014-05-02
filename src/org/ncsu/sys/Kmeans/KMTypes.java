@@ -37,6 +37,7 @@ public class KMTypes {
 		private int dimension;
 		private int[] coordinates;
 		private int count;
+		private int centroidIdx;
 		
 		public Value(int dimension){
 			this.dimension = dimension; 
@@ -44,14 +45,26 @@ public class KMTypes {
 			for(int i = 0; i < dimension; i++)
 				this.coordinates[i] = 0;
 			this.count = 0;
+			centroidIdx = 1;
+			
+		}
+		
+		public int getCentroidIdx() {
+			return centroidIdx;
+		}
+
+		public void setCentroidIdx(int centroidIdx) {
+			this.centroidIdx = centroidIdx;
 		}
 		
 		public int getDimension() {
 			return dimension;
 		}
+		
 		public void setDimension(int dimension) {
 			this.dimension = dimension;
 		}
+		
 		public int[] getCoordinates() {
 			return coordinates;
 		}
@@ -105,6 +118,14 @@ public class KMTypes {
 			this.count++;
 		}
 		
+		public void addVector(Value vector){
+			int[] coords = vector.getCoordinates();
+			for(int i = 0; i < this.dimension; i++){
+				this.coordinates[i] += coords[i];
+			}
+			this.count += vector.getCount();
+		}
+		
 	}
 	
 	
@@ -112,12 +133,16 @@ public class KMTypes {
 
 		private int TaskIndex;
 		private VectorType type;
+		
+		//This is assigned by the map task
+		private int centroidIdx;
 
 		public Key(int TaskIndex, VectorType type) {
 			this.TaskIndex = TaskIndex;
 			this.type = type;
+		//	this.centroidIdx = -1;
 		}
-		
+
 		public VectorType getType() {
 			return type;
 		}

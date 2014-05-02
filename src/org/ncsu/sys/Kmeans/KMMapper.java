@@ -15,6 +15,7 @@ public class KMMapper extends Mapper<Key, Value, Key, Value> {
 	
 	private int dimension;
 	private int R1;
+	private int centroidIdxSeq;
 	
 	public void setup (Context context) {
 		init(context);
@@ -24,10 +25,12 @@ public class KMMapper extends Mapper<Key, Value, Key, Value> {
 		Configuration conf = context.getConfiguration();
 		dimension = conf.getInt("KM.dimension", 2);
 		R1 = conf.getInt("KM.R1", 4);
+		centroidIdxSeq = 0;
 	}
 
 	// TODO : set the input path to only files containing 
 	// newcentroids from the second iteration
+	
 	public void map(Key ikey, Value ivalue, Context context)
 			throws IOException, InterruptedException {
 		if(ikey.getType() == VectorType.REGULAR)
@@ -35,6 +38,7 @@ public class KMMapper extends Mapper<Key, Value, Key, Value> {
 		else if(ikey.getType() == VectorType.CENTROID){
 			//send it to all reduce tasks
 			for(int i = 0; i < R1; i++){
+				ivalue.setCentroidIdx(centroidIdxSeq++);
 				context.write(new Key(i, ikey.getType()), ivalue);
 			}
 		}
