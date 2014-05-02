@@ -34,6 +34,7 @@ public class KMDriver {
 //	private static final String KM_INPUT_PATH_2 = KM_DATA_DIR + "/2";
 //	private static final String KM_INPUT_PATH_3 = KM_DATA_DIR + "/3";
 //	private static final String KM_INPUT_PATH_4 = KM_DATA_DIR + "/4";
+	private static final String KM_TEMP_CLUSTER_DIR_PATH = KM_DATA_DIR + "/tmpC";
 	private static final String KM_TEMP_DIR_PATH = KM_DATA_DIR;
 	private static final String KM_TEMP_OUTPUT_PATH = KM_DATA_DIR + "/tmp/C";
 	private static final String KM_OUTPUT_PATH = KM_DATA_DIR + "/C";
@@ -81,8 +82,10 @@ public class KMDriver {
 	    
 	    String outPath = fs.makeQualified(new Path(KM_OUTPUT_PATH)).toString();
 	    String tempDirPath = fs.makeQualified(new Path(KM_TEMP_DIR_PATH)).toString();
+	    String tempClusterDirPath = fs.makeQualified(new Path(KM_TEMP_CLUSTER_DIR_PATH)).toString();
 	    conf.set("KM.outputDirPath", outPath);
 	    conf.set("KM.tempDirPath", tempDirPath);
+	    conf.set("KM.tempClusterDir", tempClusterDirPath);
 //	    conf.setInt("SpMM.strategy", strategy);
 	    conf.setInt("KM.R1", mapTaskCount);
 	    conf.setInt("KM.R2", mapTaskCount);

@@ -41,7 +41,9 @@ public class KMTypes {
 		public Value(int dimension){
 			this.dimension = dimension; 
 			this.coordinates = new int[dimension];
-			this.count = 1;
+			for(int i = 0; i < dimension; i++)
+				this.coordinates[i] = 0;
+			this.count = 0;
 		}
 		
 		public int getDimension() {
@@ -94,6 +96,13 @@ public class KMTypes {
 				}
 			}
 			return 0;
+		}
+
+		public void addVector(int[] vector) {
+			for(int i = 0; i < this.dimension; i++){
+				this.coordinates[i] += vector[i];
+			}
+			this.count++;
 		}
 		
 	}
