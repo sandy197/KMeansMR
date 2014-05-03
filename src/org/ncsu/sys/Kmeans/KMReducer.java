@@ -2,6 +2,7 @@ package org.ncsu.sys.Kmeans;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.List;
 
@@ -28,9 +29,10 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 	private static final boolean DEBUG = true;
 	public static String ZK_ADDRESS = "10.1.255.13:2181";
 	private int dimension;
-	private List<Value> centroids, vectors;
+	private int k;
 	private int R1;
-	boolean isCbuilt, isVbuilt;
+	private boolean isCbuilt, isVbuilt;
+	private List<Value> centroids, vectors;
 	
 	public void setup (Context context) {
 		init(context);
@@ -39,6 +41,7 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 	private void init(Context context) {
 		Configuration conf = context.getConfiguration();
 		dimension = conf.getInt("KM.dimension", 2);
+		k = conf.getInt("KM.k", 6);
 		R1 = conf.getInt("KM.R1", 2);
 		centroids = new ArrayList<Value>(R1);
 		isCbuilt = isVbuilt = false;
@@ -80,8 +83,10 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 			for(int i = 0; i < partialCentroids.length ; i++){
 				Value centroid = (Value)centroids.get(i);
 				IntWritable el = new IntWritable();
-				el.set(partialCentroids[i].getCentroidIdx());
-				writer.append(el, partialCentroids[i]);
+				if(partialCentroids[i] != null){
+					el.set(partialCentroids[i].getCentroidIdx());
+					writer.append(el, partialCentroids[i]);
+				}
 			}
 			writer.close();
 			//sync
@@ -109,7 +114,7 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 					//configureWithClusterInfo for reading a file
 					path = new Path(conf.get("KM.tempClusterDir") + "/" + R1);
 					Path filePath = fs.makeQualified(path);
-					List<Value> partCentroidsFromFile = getCentroidsFromFile(filePath);
+					List<Value> partCentroidsFromFile = KMUtils.getCentroidsFromFile(filePath);
 					for(Value partialCentroid : partCentroidsFromFile){
 						if(auxCentroids.containsKey(partialCentroid.getCentroidIdx())){
 							//TODO: clarify changes to count and consider corner cases
@@ -122,12 +127,35 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 				}
 				
 				int centroidCount = auxCentroids.keySet().size();
+				Hashtable<Integer, Value> centroidsMap = new Hashtable<Integer, Value>(); 
+				
+				//need to identify which centroid has not been assigned any points/vectors
+				HashSet<Integer> centroidIndices = new HashSet<Integer>();
+				for(Value centroid : centroids){
+					centroidsMap.put(centroid.getCentroidIdx(), centroid);
+					centroidIndices.add(centroid.getCentroidIdx());
+				}
+				
 				for(Integer key : auxCentroids.keySet()){
 					//TODO: compute new clusters
 					Value newCentroid = computeNewCentroid(auxCentroids.get(key));
-					//TODO:write it back as a standard reducer output !
-					if(newCentroid != null)
-						context.write(new Key(R1, VectorType.CENTROID), newCentroid);
+					newCentroid.setCentroidIdx(key);
+					// write it back as a standard reducer output !
+					// make sure all the k-cluster centroids are written even the ones with size-zero
+					if(newCentroid != null && centroidIndices.contains(key)){
+						context.write(new Key(key, VectorType.CENTROID), newCentroid);
+						centroidIndices.remove(key);
+					}
+					else{
+						if(newCentroid != null)
+							throw new InterruptedException("FATAL: multiple centroids with same id !!");
+					}
+				}
+				
+				if(!centroidIndices.isEmpty()){
+					for(Integer key : centroidIndices) {
+						context.write(new Key(key, VectorType.CENTROID), centroidsMap.get(key));
+					}
 				}
 			}
 		}
@@ -148,39 +176,7 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 			
 	}
 
-	private List<Value> getCentroidsFromFile(Path filePath) {
-		List<Value> partialCentroids = new ArrayList<Value>();
-		Configuration conf = new Configuration();
-		Reader reader = null;
-		try {
-			FileSystem fs = filePath.getFileSystem(conf);
-			reader = new SequenceFile.Reader(fs, filePath, conf);
-			Class<?> valueClass = reader.getValueClass();
-			IntWritable key;
-			try {
-				key = reader.getKeyClass().asSubclass(IntWritable.class).newInstance();
-			} catch (InstantiationException e) { // Should not be possible
-				throw new IllegalStateException(e);
-			} catch (IllegalAccessException e) {
-					throw new IllegalStateException(e);
-			}
-			Value value = new Value();
-			while (reader.next(key, value)) {
-				partialCentroids.add(value);
-				value = new Value();
-			}
-        } catch (IOException e) {
-			e.printStackTrace();
-		} finally {
-        	try{
-        		reader.close();
-        	} catch (IOException e) {
-        		e.printStackTrace();
-        	}
-        }
-		return partialCentroids;
-	}
-
+	
 	private Value[] classify(List<Value> vectors2, List<Value> centroids2) throws Exception {
 		Value[] partialCentroids = new Value[centroids2.size()];
 		for(Value point : vectors2){
@@ -204,7 +200,7 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 		int nearestCidx = -1;
 		int shortestDistance = Integer.MAX_VALUE;
 		for(Value centroid : centroids2){
-			int distance = getDistance(point.getCoordinates(), centroid.getCoordinates());
+			int distance = KMUtils.getDistance(point.getCoordinates(), centroid.getCoordinates());
 			if(distance < shortestDistance){
 				nearestCidx  = centroid.getCentroidIdx();
 				shortestDistance = distance;
@@ -212,14 +208,6 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 		}
 		return nearestCidx;
 		
-	}
-
-	private int getDistance(int[] point, int[] centroid) {
-		int distance = 0;
-		for(int i = 0; i < point.length; i++){
-			distance += (point[i] - centroid[i]) * (point[i] - centroid[i]); 
-		}
-		return distance;
 	}
 
 	private void buildCentroids(Iterable<Value> values, List<Value> centroidsLoc) {
