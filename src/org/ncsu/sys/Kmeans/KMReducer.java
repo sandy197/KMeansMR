@@ -42,13 +42,16 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 		Configuration conf = context.getConfiguration();
 		dimension = conf.getInt("KM.dimension", 2);
 		k = conf.getInt("KM.k", 6);
-		R1 = conf.getInt("KM.R1", 2);
-		centroids = new ArrayList<Value>(R1);
+		R1 = conf.getInt("KM.R1", 6);
+		centroids = new ArrayList<Value>();
+		vectors = new ArrayList<Value>();
 		isCbuilt = isVbuilt = false;
 	}
 
 	public void reduce(Key _key, Iterable<Value> values, Context context)
 			throws IOException, InterruptedException {
+		
+		if(DEBUG) printReduceInputKey(_key);
 		//populate clusters and data
 		Value[] partialCentroids = null;
 		
@@ -57,12 +60,12 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 			isCbuilt = true;
 		}
 		else{
-			//TODO : use build and set here
+			//use build and set here
 			buildCentroids(values, vectors);
 			isVbuilt = true;
 			//buildVectors(values, vectors);
 		}
-		//TODO : compute the partial clusters
+		//compute the partial clusters
 		if(isCbuilt && isVbuilt){
 			try{
 				partialCentroids = classify(vectors, centroids);
@@ -76,7 +79,8 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 			FileSystem fs = FileSystem.get(conf);
 			int taskId = context.getTaskAttemptID().getTaskID().getId();
 			//TODO: write the partial centroids to files
-			Path path = new Path(conf.get("KM.tempClusterDir" + "/" + taskId));
+			Path path = new Path(conf.get("KM.tempClusterDir") + "/" + taskId);
+			System.out.println("##Writing to:" + path.toString());
 			SequenceFile.Writer writer = SequenceFile.createWriter(fs, conf, path,
 				      IntWritable.class, Value.class,
 				      SequenceFile.CompressionType.NONE);
@@ -90,7 +94,7 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 			}
 			writer.close();
 			//sync
-			Barrier b = new Barrier(ZK_ADDRESS, "/b1", R1);
+			Barrier b = new Barrier(ZK_ADDRESS, "/b-kmeans", R1);
 			try{
 			    boolean flag = b.enter();
 			    System.out.println("Entered barrier: " + 6);
@@ -105,8 +109,9 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 			if(taskId == 0){
 				//TODO : add partial centers of task 0 to the hashmap.
 				Hashtable<Integer, Value> auxCentroids = new Hashtable<Integer, Value>();
-				for(int i = 0; i < partialCentroids.length; i++){
-					auxCentroids.put(partialCentroids[i].getCentroidIdx(), partialCentroids[i]);
+				for(Value partialCentroid : partialCentroids){
+					if(partialCentroid != null)
+						auxCentroids.put(partialCentroid.getCentroidIdx(), partialCentroid);
 				}
 				
 				//add partial centers of other tasks to the hashmap
@@ -114,6 +119,7 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 					//configureWithClusterInfo for reading a file
 					path = new Path(conf.get("KM.tempClusterDir") + "/" + R1);
 					Path filePath = fs.makeQualified(path);
+					System.out.println("##Reading from:" + path.toString());
 					List<Value> partCentroidsFromFile = KMUtils.getCentroidsFromFile(filePath);
 					for(Value partialCentroid : partCentroidsFromFile){
 						if(auxCentroids.containsKey(partialCentroid.getCentroidIdx())){
@@ -215,6 +221,11 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 			centroidsLoc.add(val);
 		}
 		
+	}
+	
+	private void printReduceInputKey (Key key) {
+		System.out.println("##### Reduce input: key = (" + key.getTaskIndex() + "," + 
+			key.getType() +")");
 	}
 
 }

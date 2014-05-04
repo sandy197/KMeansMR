@@ -40,9 +40,8 @@ public class KMTypes {
 		private int centroidIdx;
 		
 		public Value(){
-//			this.dimension = 0;
-//			this.count = 0;
-//			this.centroidIdx = 1;
+			this.count = 0;
+			centroidIdx = -1;
 		}
 		
 		public Value(int dimension){
@@ -51,7 +50,8 @@ public class KMTypes {
 			for(int i = 0; i < dimension; i++)
 				this.coordinates[i] = 0;
 			this.count = 0;
-			centroidIdx = 1;
+			//unassigned to any cluster
+			centroidIdx = -1;
 			
 		}
 		
@@ -87,8 +87,9 @@ public class KMTypes {
 		@Override
 		public void readFields(DataInput in) throws IOException {
 			dimension = in.readInt();
+			coordinates = new int[dimension];
 			for(int i = 0; i < dimension; i++){
-				in.readInt();
+				coordinates[i] = in.readInt();
 			}
 			count = in.readInt();
 			centroidIdx = in.readInt();
@@ -142,6 +143,9 @@ public class KMTypes {
 		private int TaskIndex;
 		private VectorType type;
 		
+		public Key(){
+			
+		}
 
 		public Key(int TaskIndex, VectorType type) {
 			this.TaskIndex = TaskIndex;

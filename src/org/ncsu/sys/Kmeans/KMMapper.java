@@ -13,6 +13,8 @@ import org.ncsu.sys.Kmeans.KMTypes.VectorType;
 
 public class KMMapper extends Mapper<Key, Value, Key, Value> {
 	
+	private static boolean DEBUG = true;
+	
 	private int dimension;
 	private int R1;
 	private int centroidIdxSeq;
@@ -33,14 +35,33 @@ public class KMMapper extends Mapper<Key, Value, Key, Value> {
 	
 	public void map(Key ikey, Value ivalue, Context context)
 			throws IOException, InterruptedException {
-		if(ikey.getType() == VectorType.REGULAR)
-			context.write(ikey, ivalue);
-		else if(ikey.getType() == VectorType.CENTROID){
+		Key newKey = ikey;
+		if(ikey.getType() == VectorType.REGULAR){
+			context.write(newKey, ivalue);
+			if(DEBUG) printMapOutput(newKey, ivalue);
+		}
+		if(ikey.getType() == VectorType.CENTROID){
 			//send it to all reduce tasks
+			int centroidId = centroidIdxSeq++;
 			for(int i = 0; i < R1; i++){
-				ivalue.setCentroidIdx(centroidIdxSeq++);
+				ivalue.setCentroidIdx(centroidId);
+				newKey = new Key(i, ikey.getType());
 				context.write(new Key(i, ikey.getType()), ivalue);
+				if(DEBUG) printMapOutput(newKey, ivalue);
 			}
 		}
+		//context.write(newKey, ivalue);
+		//if(DEBUG) printMapOutput(newKey, ivalue);
+	}
+	
+	private void printMapOutput (Key key, Value value) {
+		StringBuilder sb = new StringBuilder();
+		sb.append("##### Map output: (" + key.getTaskIndex() + "," + 
+			key.getType() + ") (" + value.getDimension() + "," + value.getCentroidIdx() + "," + value.getCount() + "\n");
+		for(int coord : value.getCoordinates()){
+			sb.append(coord + ",");
+		}
+		sb.append(") ");
+		System.out.println(sb.toString());
 	}
 }

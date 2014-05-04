@@ -33,7 +33,7 @@ public class KMDriver {
 	private static final String KM_TEMP_CLUSTER_DIR_PATH = KM_DATA_DIR + "/tmpC";
 	
 	private static FileSystem fs;
-	private static Configuration conf;
+	private static Configuration conf = new Configuration();;
 
 	public static void main(String[] args) throws Exception {
 		GenericOptionsParser goParser = new GenericOptionsParser(conf, args);
@@ -43,7 +43,7 @@ public class KMDriver {
 		String[] remainingArgs = goParser.getRemainingArgs();
 		
 		if (remainingArgs.length < 6) {
-		     System.out.println("USAGE: <COUNT> <K> <DIMENSION OF VECTORS> <MAXITERATIONS> <num of tasks> <convgDelta");
+		     System.out.println("USAGE: <COUNT> <K> <DIMENSION OF VECTORS> <MAXITERATIONS> <num of tasks> <convgDelta>");
 		      return;
 		}
 
@@ -60,16 +60,19 @@ public class KMDriver {
 		conf.setInt("KM.mapTaskCount", taskCount);
 //		conf.set("KM.centerIn", center.toString());
 //	    conf.set("KM.centerOut", centerOut.toString());
-	    String inputPath = fs.makeQualified(new Path(KM_DATA_INPUT_PATH)).toString();
+	    String inputDataPath = fs.makeQualified(new Path(KM_DATA_INPUT_PATH)).toString();
+	    String inputCenterPath = fs.makeQualified(new Path(KM_CENTER_INPUT_PATH)).toString();
 	    String outPath = fs.makeQualified(new Path(KM_CENTER_OUTPUT_PATH)).toString();
 	    String tempDirPath = fs.makeQualified(new Path(KM_TEMP_CLUSTER_DIR_PATH)).toString();
 	    String tempClusterDirPath = fs.makeQualified(new Path(KM_TEMP_CLUSTER_DIR_PATH)).toString();
-	    conf.set("KM.inputDirPath", inputPath);
+	    conf.set("KM.inputDataPath", inputDataPath);
+	    conf.set("KM.inputCenterPath", inputCenterPath);
 	    conf.set("KM.outputDirPath", outPath);
 	    conf.set("KM.tempDirPath", tempDirPath);
 	    conf.set("KM.tempClusterDir", tempClusterDirPath);
 	    conf.setInt("KM.R1", taskCount);
 	    fs.delete(new Path(tempDirPath), true);
+	    fs.delete(new Path(tempClusterDirPath), true);
 		fs.delete(new Path(outPath), true);
 		
 		//write input data and centers to the file paths accordingly
@@ -131,7 +134,7 @@ public class KMDriver {
 		job.setJarByClass(org.ncsu.sys.Kmeans.KMDriver.class);
 		
 		job.setNumReduceTasks(conf.getInt("KM.R1", 6));
-	    System.out.println("Number of reduce tasks for job1 set to: "+ conf.getInt("SpMM.R1", 0));
+	    System.out.println("Number of reduce tasks for job1 set to: "+ conf.getInt("KM.R1", 0));
 	    job.setInputFormatClass(SequenceFileInputFormat.class);
 	    job.setOutputFormatClass(SequenceFileOutputFormat.class);
  		job.setMapperClass(KMMapper.class);
@@ -142,11 +145,13 @@ public class KMDriver {
 	    job.setOutputKeyClass(org.ncsu.sys.Kmeans.KMTypes.Key.class);
 	    job.setOutputValueClass(org.ncsu.sys.Kmeans.KMTypes.Value.class);
 	    
-	    FileInputFormat.addInputPath(job, centersIn);
+	    
 	    //uncomment the following line when using Phadoop
 	    //if(iteration == 1)
-	    FileInputFormat.addInputPath(job, new Path(conf.get("KM.inputDirPath")));
-	    FileOutputFormat.setOutputPath(job, (new Path(conf.get("SpMM.tempDirPath"))));
+	    FileInputFormat.addInputPath(job, new Path(conf.get("KM.inputDataPath")));
+	    FileInputFormat.addInputPath(job, centersIn);
+	    
+	    FileOutputFormat.setOutputPath(job, centersOut);
 	    
 	    //TODO: fix all the paths and implement the algo as indicated in the site.
 	    
