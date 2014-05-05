@@ -33,7 +33,7 @@ public class KMDriver {
 	private static final String KM_TEMP_CLUSTER_DIR_PATH = KM_DATA_DIR + "/tmpC";
 	
 	private static FileSystem fs;
-	private static Configuration conf = new Configuration();;
+	private static Configuration conf = new Configuration();
 
 	public static void main(String[] args) throws Exception {
 		GenericOptionsParser goParser = new GenericOptionsParser(conf, args);

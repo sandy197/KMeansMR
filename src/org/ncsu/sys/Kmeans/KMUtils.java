@@ -121,10 +121,22 @@ public class KMUtils {
 		return distance;
 	}
 	
+	public static int[] ratio = {2, 4, 8, 16, 32, 64};
+	
 	public static void prepareInput(int count, int k, int dimension, int taskCount,
 		      Configuration conf, Path in, Path center, FileSystem fs)
 		      throws IOException {
 		int cIdxSeq = 0;
+		int rSigma = 0;
+		int[] distribution = new int[taskCount];
+		for(int i = 0; i < taskCount; i++){
+			rSigma += ratio[i];
+		}
+		int singlePart = count/rSigma;
+		for(int i=0; i < taskCount; i++){
+			distribution[i] = singlePart * ratio[i];
+		}
+		
 //		if (fs.exists(out))
 //			fs.delete(out, true);
 		if (fs.exists(center))
@@ -145,8 +157,14 @@ public class KMUtils {
 			Value vector = new Value(dimension);
 			vector.setCoordinates(arr);
 			vector.setCount(1);
-			dataWriter.append(new Key(r.nextInt(taskCount), VectorType.REGULAR),vector);
-			//dataWriter.append(new Key(i % taskCount, VectorType.REGULAR),vector);
+			dataWriter.append(new Key(getTaskIndex(i, singlePart, taskCount), VectorType.REGULAR),vector);
+//			if(i < taskCount){
+//				//NOTE : to make sure atleast one point is assigned to a task
+//				dataWriter.append(new Key(i % taskCount, VectorType.REGULAR),vector);
+//			}
+//			else{
+//				//dataWriter.append(new Key(r.nextInt(taskCount), VectorType.REGULAR),vector);
+//			}
 			if (k > i) {
 				vector.setCentroidIdx(cIdxSeq++);
 				centerWriter.append(new Key(r.nextInt(taskCount), VectorType.CENTROID),vector);
@@ -157,6 +175,19 @@ public class KMUtils {
 	}
 	
 	
+	private static int getTaskIndex(int vectorNumber, int singlePart, int taskCount) {
+		int taskIdx = -1;
+		int quo = vectorNumber / singlePart;
+		for(int i = 0; i < taskCount; i++){
+			if(quo < KMUtils.ratio[i]){
+				taskIdx = i;
+				break;
+			}
+		}
+		//if not less than any ratio term then assign it to the last task
+		return (taskIdx == -1) ? (taskCount-1) : taskIdx;
+	}
+
 	//picked up from mahout library
 	public static List<Value> chooseRandomPoints(Collection<Value> vectors, int k) {
 	    List<Value> chosenPoints = new ArrayList<Value>(k);

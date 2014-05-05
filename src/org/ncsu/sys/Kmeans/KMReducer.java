@@ -72,7 +72,11 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 		if(isCbuilt && isVbuilt){
 			try{
 				if(DEBUG) System.out.println("Classifying " + vectors.size() + " vectors among " + centroids.size() + " clusters" );
+				System.out.println("$$VectorCount:"+"\t"+vectors.size());
+				long start =System.nanoTime();
 				partialCentroids = classify(vectors, centroids);
+				long end =System.nanoTime();
+				System.out.println("$$ClassifyTime:"+"\t" + (end-start));
 			}
 			catch(Exception ex){
 				ex.printStackTrace();
@@ -105,8 +109,11 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 			//sync
 			Barrier b = new Barrier(ZK_ADDRESS, "/b-kmeans", R1);
 			try{
+				long start = System.nanoTime();
 			    boolean flag = b.enter();
 			    System.out.println("Entered barrier: " + 6);
+			    long end = System.nanoTime();
+			    System.out.println("$$BarrierTime:"+"\t" + (end-start));
 			if(!flag) System.out.println("Error when entering the barrier");
 			} catch (KeeperException e){
 				e.printStackTrace();
