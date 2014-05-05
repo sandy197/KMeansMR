@@ -63,15 +63,13 @@ public class KMDriver {
 	    String inputDataPath = fs.makeQualified(new Path(KM_DATA_INPUT_PATH)).toString();
 	    String inputCenterPath = fs.makeQualified(new Path(KM_CENTER_INPUT_PATH)).toString();
 	    String outPath = fs.makeQualified(new Path(KM_CENTER_OUTPUT_PATH)).toString();
-	    String tempDirPath = fs.makeQualified(new Path(KM_TEMP_CLUSTER_DIR_PATH)).toString();
 	    String tempClusterDirPath = fs.makeQualified(new Path(KM_TEMP_CLUSTER_DIR_PATH)).toString();
 	    conf.set("KM.inputDataPath", inputDataPath);
 	    conf.set("KM.inputCenterPath", inputCenterPath);
 	    conf.set("KM.outputDirPath", outPath);
-	    conf.set("KM.tempDirPath", tempDirPath);
 	    conf.set("KM.tempClusterDir", tempClusterDirPath);
 	    conf.setInt("KM.R1", taskCount);
-	    fs.delete(new Path(tempDirPath), true);
+	    
 	    fs.delete(new Path(tempClusterDirPath), true);
 		fs.delete(new Path(outPath), true);
 		
@@ -85,24 +83,35 @@ public class KMDriver {
 		boolean converged = false;
 		int iteration = 1;
 		Path centersIn = fs.makeQualified(new Path(KM_CENTER_INPUT_PATH));
-		while(!converged && iteration <= maxIterations){
-			try {
-				Path centersOut = fs.makeQualified(new Path(KM_CENTER_OUTPUT_PATH, "iteration-" + iteration));
-				this.kmeansJob(centersIn, centersOut, iteration);
-				converged = isConverged(centersIn, centersOut, convergenceDelta);
-				if(!converged)
-					centersIn = centersOut;
-				iteration++;
-			} catch (Exception e) {
-				e.printStackTrace();
+//		try {
+//			fs.delete(new Path(conf.get("KM.tempClusterDir")), true);
+//		} catch (IllegalArgumentException e1) {
+//			e1.printStackTrace();
+//		} catch (IOException e1) {
+//			e1.printStackTrace();
+//		}
+		try {
+			while(!converged && iteration <= maxIterations){
+				
+					Path centersOut = fs.makeQualified(new Path(KM_CENTER_OUTPUT_PATH, "iteration-" + iteration));
+					this.kmeansJob(centersIn, centersOut, iteration);
+					converged = isConverged(centersIn, centersOut, convergenceDelta, iteration == 1);
+					if(!converged){
+						centersIn = centersOut;
+						System.out.println("## not converged, going for the next iteration with input from "+ centersIn.toString());
+					}
+					iteration++;
+					fs.delete(new Path(conf.get("KM.tempClusterDir")), true);
 			}
+		} catch (Exception e) {
+			e.printStackTrace();
 		}
 	}
 	
-	private boolean isConverged(Path centersIn, Path centersOut, int convergenceDelta) {
+	private boolean isConverged(Path centersIn, Path centersOut, int convergenceDelta, boolean isFirstIter) {
 		boolean converged = true;
-		List<Value> oldCentroids = KMUtils.getCentroidsFromFile(centersIn);
-		List<Value> newCentroids = KMUtils.getCentroidsFromFile(centersOut);
+		List<Value> oldCentroids = KMUtils.getCentroidsFromFile(centersIn, !isFirstIter);
+		List<Value> newCentroids = KMUtils.getCentroidsFromFile(centersOut, true);
 		Hashtable<Integer, Value> oldCentroidMap = new Hashtable<Integer,Value>();
 		Hashtable<Integer, Value> newCentroidMap = new Hashtable<Integer,Value>();
 		

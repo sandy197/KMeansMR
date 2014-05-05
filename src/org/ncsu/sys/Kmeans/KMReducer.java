@@ -51,7 +51,10 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 	public void reduce(Key _key, Iterable<Value> values, Context context)
 			throws IOException, InterruptedException {
 		
-		if(DEBUG) printReduceInputKey(_key);
+		if(DEBUG){ 
+			printReduceInputKey(_key);
+			//printReduceInputValues(values);
+		}
 		//populate clusters and data
 		Value[] partialCentroids = null;
 		
@@ -68,6 +71,7 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 		//compute the partial clusters
 		if(isCbuilt && isVbuilt){
 			try{
+				if(DEBUG) System.out.println("Classifying " + vectors.size() + " vectors among " + centroids.size() + " clusters" );
 				partialCentroids = classify(vectors, centroids);
 			}
 			catch(Exception ex){
@@ -90,9 +94,14 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 				if(partialCentroids[i] != null){
 					el.set(partialCentroids[i].getCentroidIdx());
 					writer.append(el, partialCentroids[i]);
+					if(DEBUG) System.out.println("Partial centroid : " + el.get() + partialCentroids[i]);
+				}
+				else{
+					if(DEBUG) System.out.println("No partial centroid for cluster index:"+i);
 				}
 			}
 			writer.close();
+			System.out.println("##Writing to:" + path.toString() +" Done");
 			//sync
 			Barrier b = new Barrier(ZK_ADDRESS, "/b-kmeans", R1);
 			try{
@@ -105,9 +114,9 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 				e.printStackTrace();
 			}
 			
-			//TODO: read files and compute newClusters only if its the task 0
+			//read files and compute newClusters only if its the task 0
 			if(taskId == 0){
-				//TODO : add partial centers of task 0 to the hashmap.
+				//add partial centers of task 0 to the hashmap.
 				Hashtable<Integer, Value> auxCentroids = new Hashtable<Integer, Value>();
 				for(Value partialCentroid : partialCentroids){
 					if(partialCentroid != null)
@@ -117,10 +126,10 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 				//add partial centers of other tasks to the hashmap
 				for(int i = 1; i < R1; i++){
 					//configureWithClusterInfo for reading a file
-					path = new Path(conf.get("KM.tempClusterDir") + "/" + R1);
+					path = new Path(conf.get("KM.tempClusterDir") + "/" + i);
 					Path filePath = fs.makeQualified(path);
 					System.out.println("##Reading from:" + path.toString());
-					List<Value> partCentroidsFromFile = KMUtils.getCentroidsFromFile(filePath);
+					List<Value> partCentroidsFromFile = KMUtils.getPartialCentroidsFromFile(filePath);
 					for(Value partialCentroid : partCentroidsFromFile){
 						if(auxCentroids.containsKey(partialCentroid.getCentroidIdx())){
 							//TODO: clarify changes to count and consider corner cases
@@ -133,6 +142,7 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 				}
 				
 				int centroidCount = auxCentroids.keySet().size();
+				if(DEBUG) System.out.println("## partial centroids accumulated:" + centroidCount);
 				Hashtable<Integer, Value> centroidsMap = new Hashtable<Integer, Value>(); 
 				
 				//need to identify which centroid has not been assigned any points/vectors
@@ -143,13 +153,14 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 				}
 				
 				for(Integer key : auxCentroids.keySet()){
-					//TODO: compute new clusters
+					//compute new clusters
 					Value newCentroid = computeNewCentroid(auxCentroids.get(key));
 					newCentroid.setCentroidIdx(key);
 					// write it back as a standard reducer output !
 					// make sure all the k-cluster centroids are written even the ones with size-zero
 					if(newCentroid != null && centroidIndices.contains(key)){
 						context.write(new Key(key, VectorType.CENTROID), newCentroid);
+						if(DEBUG) printReduceOutput(new Key(key, VectorType.CENTROID), newCentroid);
 						centroidIndices.remove(key);
 					}
 					else{
@@ -161,10 +172,24 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 				if(!centroidIndices.isEmpty()){
 					for(Integer key : centroidIndices) {
 						context.write(new Key(key, VectorType.CENTROID), centroidsMap.get(key));
+						if(DEBUG) printReduceOutput(new Key(key, VectorType.CENTROID), centroidsMap.get(key));
 					}
 				}
 			}
 		}
+	}
+
+	private void printReduceInputValues(Iterable<Value> values) {
+		StringBuilder sb = new StringBuilder();
+		sb.append("##### Reduce input values: "+"\n" );
+		for(Value value : values){
+			sb.append( "[" + value.getDimension() + "," + value.getCentroidIdx() + "," + value.getCount() + "(");
+			for(int coord : value.getCoordinates()){
+				sb.append(coord + ",");
+			}
+			sb.append(")] " + "\n");
+		}
+		System.out.println(sb.toString());		
 	}
 
 	private Value computeNewCentroid(Value value) {
@@ -218,7 +243,11 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 
 	private void buildCentroids(Iterable<Value> values, List<Value> centroidsLoc) {
 		for(Value val : values){
-			centroidsLoc.add(val);
+			if(DEBUG) System.out.println("Adding value :" + val);
+			Value valCopy = new Value(val.getDimension());
+			valCopy.addVector(val);
+			valCopy.setCentroidIdx(val.getCentroidIdx());
+			centroidsLoc.add(valCopy);
 		}
 		
 	}
@@ -226,6 +255,17 @@ public class KMReducer extends Reducer<Key, Value, Key, Value> {
 	private void printReduceInputKey (Key key) {
 		System.out.println("##### Reduce input: key = (" + key.getTaskIndex() + "," + 
 			key.getType() +")");
+	}
+	
+	private void printReduceOutput (Key key, Value value) {
+		StringBuilder sb = new StringBuilder();
+		sb.append("##### Reduce output: (" + key.getTaskIndex() + "," + 
+			key.getType() + ") (" + value.getDimension() + "," + value.getCentroidIdx() + "," + value.getCount() + "\n");
+		for(int coord : value.getCoordinates()){
+			sb.append(coord + ",");
+		}
+		sb.append(") ");
+		System.out.println(sb.toString());
 	}
 
 }

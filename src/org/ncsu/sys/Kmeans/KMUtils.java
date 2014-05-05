@@ -8,6 +8,7 @@ import java.util.Random;
 
 import org.apache.commons.lang.math.RandomUtils;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
@@ -19,7 +20,7 @@ import org.ncsu.sys.Kmeans.KMTypes.Value;
 import org.ncsu.sys.Kmeans.KMTypes.VectorType;
 
 public class KMUtils {
-	public static List<Value> getCentroidsFromFile(Path filePath) {
+	public static List<Value> getPartialCentroidsFromFile(Path filePath) {
 		List<Value> partialCentroids = new ArrayList<Value>();
 		Configuration conf = new Configuration();
 		Reader reader = null;
@@ -44,7 +45,67 @@ public class KMUtils {
 			e.printStackTrace();
 		} finally {
         	try{
-        		reader.close();
+        		if(reader != null)
+        			reader.close();
+        	} catch (IOException e) {
+        		e.printStackTrace();
+        	}
+        }
+		return partialCentroids;
+	}
+	
+	public static List<Value> getCentroidsFromFile(Path filePath, boolean isReduceOutput) {
+		List<Value> partialCentroids = new ArrayList<Value>();
+		Configuration conf = new Configuration();
+		Reader reader = null;
+		try {
+			FileSystem fs = filePath.getFileSystem(conf);
+			if(isReduceOutput){
+				FileStatus[] parts = fs.listStatus(filePath);
+			    for (FileStatus part : parts) {
+			      String name = part.getPath().getName();
+			      if (name.startsWith("part") && !name.endsWith(".crc")) {
+			        reader = new SequenceFile.Reader(fs, part.getPath(), conf);
+			        try {
+			          Key key = reader.getKeyClass().asSubclass(Key.class).newInstance();
+			          Value value = new Value();
+			          while (reader.next(key, value)) {
+			        	  partialCentroids.add(value);
+			        	  value = new Value();
+			          }
+			        } catch (InstantiationException e) { // shouldn't happen
+			          e.printStackTrace();
+			          throw new IllegalStateException(e);
+			        } catch (IllegalAccessException e) {
+			        	e.printStackTrace();
+			          throw new IllegalStateException(e);
+			        }
+			      }
+			    }
+			}
+			else{
+				reader = new SequenceFile.Reader(fs, filePath, conf);
+				Class<?> valueClass = reader.getValueClass();
+				Key key;
+				try {
+					key = reader.getKeyClass().asSubclass(Key.class).newInstance();
+				} catch (InstantiationException e) { // Should not be possible
+					throw new IllegalStateException(e);
+				} catch (IllegalAccessException e) {
+						throw new IllegalStateException(e);
+				}
+				Value value = new Value();
+				while (reader.next(key, value)) {
+					partialCentroids.add(value);
+					value = new Value();
+				}
+			}
+        } catch (IOException e) {
+			e.printStackTrace();
+		} finally {
+        	try{
+        		if(reader != null)
+        			reader.close();
         	} catch (IOException e) {
         		e.printStackTrace();
         	}
@@ -85,6 +146,7 @@ public class KMUtils {
 			vector.setCoordinates(arr);
 			vector.setCount(1);
 			dataWriter.append(new Key(r.nextInt(taskCount), VectorType.REGULAR),vector);
+			//dataWriter.append(new Key(i % taskCount, VectorType.REGULAR),vector);
 			if (k > i) {
 				vector.setCentroidIdx(cIdxSeq++);
 				centerWriter.append(new Key(r.nextInt(taskCount), VectorType.CENTROID),vector);

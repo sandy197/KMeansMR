@@ -135,6 +135,16 @@ public class KMTypes {
 			this.count += vector.getCount();
 		}
 		
+		public String toString(){
+			StringBuilder sb = new StringBuilder();
+			sb.append( "[" + this.getDimension() + "," + this.getCentroidIdx() + "," + this.getCount() + "(");
+			for(int coord : this.getCoordinates()){
+				sb.append(coord + ",");
+			}
+			sb.append(")] ");
+			return sb.toString();
+		}
+		
 	}
 	
 	
