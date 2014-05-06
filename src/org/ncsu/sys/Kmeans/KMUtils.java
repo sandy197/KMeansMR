@@ -134,7 +134,10 @@ public class KMUtils {
 		}
 		int singlePart = count/rSigma;
 		for(int i=0; i < taskCount; i++){
-			distribution[i] = singlePart * ratio[i];
+			if(i == 0)
+				distribution[i] = ratio[i];
+			else
+				distribution[i] = distribution[i-1] + ratio[i];
 		}
 		
 //		if (fs.exists(out))
@@ -157,7 +160,7 @@ public class KMUtils {
 			Value vector = new Value(dimension);
 			vector.setCoordinates(arr);
 			vector.setCount(1);
-			dataWriter.append(new Key(getTaskIndex(i, singlePart, taskCount), VectorType.REGULAR),vector);
+			dataWriter.append(new Key(getTaskIndex(i, singlePart, taskCount, distribution), VectorType.REGULAR),vector);
 //			if(i < taskCount){
 //				//NOTE : to make sure atleast one point is assigned to a task
 //				dataWriter.append(new Key(i % taskCount, VectorType.REGULAR),vector);
@@ -175,11 +178,12 @@ public class KMUtils {
 	}
 	
 	
-	private static int getTaskIndex(int vectorNumber, int singlePart, int taskCount) {
+	private static int getTaskIndex(int vectorNumber, int singlePart, 
+								int taskCount, int[] distribution) {
 		int taskIdx = -1;
 		int quo = vectorNumber / singlePart;
 		for(int i = 0; i < taskCount; i++){
-			if(quo < KMUtils.ratio[i]){
+			if(quo < distribution[i]){
 				taskIdx = i;
 				break;
 			}
