@@ -121,10 +121,10 @@ public class KMUtils {
 		return distance;
 	}
 	
-	public static int[] ratio = {2, 4, 8, 16, 32, 64};
+	//public static int[] ratio = {2, 4, 8, 16, 32, 64};
 	
 	public static void prepareInput(int count, int k, int dimension, int taskCount,
-		      Configuration conf, Path in, Path center, FileSystem fs)
+		      Configuration conf, Path in, Path center, FileSystem fs, int[] ratio)
 		      throws IOException {
 		int cIdxSeq = 0;
 		int rSigma = 0;
@@ -151,7 +151,7 @@ public class KMUtils {
 		        CompressionType.NONE);
 		final SequenceFile.Writer dataWriter = SequenceFile.createWriter(fs, conf,
 		        in, Key.class, Value.class, CompressionType.NONE);
-		Random r = new Random();
+		Random r = new Random(1000);
 		for (int i = 0; i < count; i++) {
 			int[] arr = new int[dimension];
 			for (int d = 0; d < dimension; d++) {
